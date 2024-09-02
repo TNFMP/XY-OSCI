@@ -18,19 +18,46 @@
         canvas {
             border: 1px solid #fff;
         }
+        .controls {
+            margin: 20px 0;
+            display: flex;
+            align-items: center;
+        }
+        .controls label {
+            margin-right: 10px;
+        }
     </style>
 </head>
 <body>
     <h1>XY Oscilloscope Audio Visualizer</h1>
+    <div class="controls">
+        <label for="samplingTime">Sampling Time:</label>
+        <input type="range" id="samplingTime" min="256" max="32768" step="256" value="2048">
+        <span id="samplingValue">2048</span>
+    </div>
     <input type="file" id="audioUpload" accept="audio/*">
     <canvas id="oscilloscope" width="500" height="500"></canvas>
 
     <script>
         const audioUpload = document.getElementById('audioUpload');
+        const samplingTimeSlider = document.getElementById('samplingTime');
+        const samplingValueDisplay = document.getElementById('samplingValue');
         const canvas = document.getElementById('oscilloscope');
         const ctx = canvas.getContext('2d');
         let audioContext = new (window.AudioContext || window.webkitAudioContext)();
         let currentSource = null;
+        let analyserX = null;
+        let analyserY = null;
+
+        samplingTimeSlider.addEventListener('input', function() {
+            const fftSize = parseInt(samplingTimeSlider.value);
+            samplingValueDisplay.textContent = fftSize;
+
+            if (analyserX && analyserY) {
+                analyserX.fftSize = fftSize;
+                analyserY.fftSize = fftSize;
+            }
+        });
 
         audioUpload.addEventListener('change', function(event) {
             const file = event.target.files[0];
@@ -56,14 +83,16 @@
             source.buffer = buffer;
 
             const splitter = audioContext.createChannelSplitter(2);
-            const analyserX = audioContext.createAnalyser();
-            const analyserY = audioContext.createAnalyser();
+            analyserX = audioContext.createAnalyser();
+            analyserY = audioContext.createAnalyser();
             
+            const fftSize = parseInt(samplingTimeSlider.value);
+            analyserX.fftSize = fftSize;
+            analyserY.fftSize = fftSize;
+
             source.connect(splitter);
             splitter.connect(analyserX, 0); // Left channel -> X axis
             splitter.connect(analyserY, 1); // Right channel -> Y axis
-            analyserX.fftSize = 2048;
-            analyserY.fftSize = 2048;
 
             // Connect the source to the speakers
             source.connect(audioContext.destination);
