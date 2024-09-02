@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XY Oscilloscope Audio Visualizer</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #111;
+            color: #fff;
+        }
+        canvas {
+            border: 1px solid #fff;
+        }
+    </style>
+</head>
+<body>
+    <h1>XY Oscilloscope Audio Visualizer</h1>
+    <input type="file" id="audioUpload" accept="audio/*">
+    <canvas id="oscilloscope" width="500" height="500"></canvas>
+
+    <script>
+        const audioUpload = document.getElementById('audioUpload');
+        const canvas = document.getElementById('oscilloscope');
+        const ctx = canvas.getContext('2d');
+        let audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        let currentSource = null;
+
+        audioUpload.addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (file) {
+                if (currentSource) {
+                    currentSource.stop(); // Stop the previous audio
+                    currentSource = null;
+                }
+                const reader = new FileReader();
+
+                reader.onload = function(e) {
+                    audioContext.decodeAudioData(e.target.result, function(buffer) {
+                        visualize(buffer);
+                    });
+                };
+
+                reader.readAsArrayBuffer(file);
+            }
+        });
+
+        function visualize(buffer) {
+            const source = audioContext.createBufferSource();
+            source.buffer = buffer;
+
+            const splitter = audioContext.createChannelSplitter(2);
+            const analyserX = audioContext.createAnalyser();
+            const analyserY = audioContext.createAnalyser();
+            
+            source.connect(splitter);
+            splitter.connect(analyserX, 0); // Left channel
+            splitter.connect(analyserY, 1); // Right channel
+            analyserX.fftSize = 2048;
+            analyserY.fftSize = 2048;
+
+            // Connect the source to the speakers
+            source.connect(audioContext.destination);
+            source.start();
+
+            currentSource = source; // Keep track of the current source
+
+            function draw() {
+                const bufferLengthX = analyserX.fftSize;
+                const bufferLengthY = analyserY.fftSize;
+                const dataArrayX = new Float32Array(bufferLengthX);
+                const dataArrayY = new Float32Array(bufferLengthY);
+
+                analyserX.getFloatTimeDomainData(dataArrayX);
+                analyserY.getFloatTimeDomainData(dataArrayY);
+
+                ctx.fillStyle = 'black';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = 'lime';
+                ctx.beginPath();
+
+                for (let i = 0; i < bufferLengthX; i++) {
+                    const x = (dataArrayX[i] + 1) * (canvas.width / 2);
+                    const y = (dataArrayY[i] + 1) * (canvas.height / 2);
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                
+                ctx.stroke();
+                requestAnimationFrame(draw);
+            }
+
+            draw();
+        }
+    </script>
+</body>
+</html>
