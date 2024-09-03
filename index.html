@@ -1,119 +1,102 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>XY Oscilloscope Audio Visualizer</title>
-  <style>
-    body {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      margin: 0;
-      background-color: #111;
-      color: #fff;
-    }
-    canvas {
-      border: 1px solid #fff;
-    }
-    .controls {
-      margin: 20px 0;
-      display: flex;
-      align-items: center;
-    }
-    .controls label {
-      margin-right: 10px;
-    }
-    audio {
-      display: none;
-    }
-  </style>
-</head>
-<body>
-  <h1>XY Oscilloscope Audio Visualizer</h1>
-  <div class="controls">
-    <label for="samplingTime">Sampling Time:</label>
-    <input type="range" id="samplingTime" min="256" max="32768" step="256" value="2048">
-    <span id="samplingValue">2048</span>
-  </div>
-  <input type="file" id="mediaUpload" accept="audio/*,video/*">
-  <canvas id="oscilloscope" width="500" height="500"></canvas>
-  <audio id="audio" controls></audio>
-  <script>
-    const mediaUpload = document.getElementById('mediaUpload'),
-      samplingTimeSlider = document.getElementById('samplingTime'),
-      samplingValueDisplay = document.getElementById('samplingValue'),
-      canvas = document.getElementById('oscilloscope'),
-      ctx = canvas.getContext('2d'),
-      audioElement = document.getElementById('audio');
-
-    let audioContext = new(window.AudioContext || window.webkitAudioContext)(),
-      audioSource = null,
-      analyserX = null,
-      analyserY = null;
-
-    mediaUpload.addEventListener('change', e => {
-      const file = e.target.files[0];
-      if (file) {
-        // Clean up previous source
-        if (audioSource) {
-          audioSource.disconnect();
-        }
-        audioElement.src = URL.createObjectURL(file);
-
-        // Handle audio or video files
-        audioElement.addEventListener('play', () => {
-          // Use audio from the audio element or video file
-          const mediaStream = audioElement.captureStream();
-          const audioTrack = mediaStream.getAudioTracks()[0];
-          audioSource = audioContext.createMediaStreamSource(new MediaStream([audioTrack]));
-
-          // Create analyzers
-          analyserX = audioContext.createAnalyser();
-          analyserY = audioContext.createAnalyser();
-          analyserX.fftSize = analyserY.fftSize = parseInt(samplingTimeSlider.value);
-
-          // Connect audio source to analyzers
-          audioSource.connect(analyserX);
-          audioSource.connect(analyserY);
-          audioSource.connect(audioContext.destination);
-
-          function draw() {
-            const bufferLength = analyserX.fftSize,
-              dataArrayX = new Float32Array(bufferLength),
-              dataArrayY = new Float32Array(bufferLength);
-            analyserX.getFloatTimeDomainData(dataArrayX);
-            analyserY.getFloatTimeDomainData(dataArrayY);
-            ctx.fillStyle = 'black';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.lineWidth = 2;
-            ctx.strokeStyle = 'lime';
-            ctx.beginPath();
-            for (let i = 0; i < bufferLength; i++) {
-              const x = (dataArrayX[i] + 1) * (canvas.width / 2),
-                y = canvas.height - (dataArrayY[i] + 1) * (canvas.height / 2);
-              i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-            }
-            ctx.stroke();
-            requestAnimationFrame(draw);
-          }
-          draw();
-        });
-
-        // Start playback
-        audioElement.play();
-        
-        // Update sampling time
-        samplingTimeSlider.addEventListener('input', () => {
-          if (analyserX && analyserY) {
-            analyserX.fftSize = analyserY.fftSize = parseInt(samplingTimeSlider.value);
-            samplingValueDisplay.textContent = samplingTimeSlider.value;
-          }
-        });
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XY Oscilloscope Audio Visualizer</title>
+    <style>
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        margin: 0;
+        background-color: #111;
+        color: #fff
       }
-    });
-  </script>
-</body>
+
+      canvas {
+        border: 1px solid #fff
+      }
+
+      .controls {
+        margin: 20px 0;
+        display: flex;
+        align-items: center
+      }
+
+      .controls label {
+        margin-right: 10px
+      }
+    </style>
+  </head>
+  <body>
+    <h1>XY Oscilloscope Audio Visualizer</h1>
+    <div class="controls">
+      <label for="samplingTime">Sampling Time:</label>
+      <input type="range" id="samplingTime" min="256" max="32768" step="256" value="2048">
+      <span id="samplingValue">2048</span>
+    </div>
+    <input type="file" id="audioUpload" accept="audio/*">
+    <canvas id="oscilloscope" width="500" height="500"></canvas>
+    <script>
+      const audioUpload = document.getElementById('audioUpload'),
+        samplingTimeSlider = document.getElementById('samplingTime'),
+        samplingValueDisplay = document.getElementById('samplingValue'),
+        canvas = document.getElementById('oscilloscope'),
+        ctx = canvas.getContext('2d');
+      let audioContext = new(window.AudioContext || window.webkitAudioContext)(),
+        currentSource = null,
+        analyserX = null,
+        analyserY = null;
+      audioUpload.addEventListener('change', e => {
+        const file = e.target.files[0];
+        if (file) {
+          currentSource && currentSource.stop();
+          const reader = new FileReader();
+          reader.onload = function(evt) {
+            audioContext.decodeAudioData(evt.target.result, function(buffer) {
+              currentSource = audioContext.createBufferSource();
+              const splitter = audioContext.createChannelSplitter(2);
+              analyserX = audioContext.createAnalyser();
+              analyserY = audioContext.createAnalyser();
+              analyserX.fftSize = analyserY.fftSize = parseInt(samplingTimeSlider.value);
+              currentSource.buffer = buffer;
+              currentSource.connect(splitter);
+              splitter.connect(analyserX, 0);
+              splitter.connect(analyserY, 1);
+              currentSource.connect(audioContext.destination);
+              currentSource.start();
+              samplingTimeSlider.addEventListener('input', () => {
+                analyserX.fftSize = analyserY.fftSize = parseInt(samplingTimeSlider.value);
+                samplingValueDisplay.textContent = samplingTimeSlider.value
+              });
+
+              function draw() {
+                const bufferLength = analyserX.fftSize,
+                  dataArrayX = new Float32Array(bufferLength),
+                  dataArrayY = new Float32Array(bufferLength);
+                analyserX.getFloatTimeDomainData(dataArrayX);
+                analyserY.getFloatTimeDomainData(dataArrayY);
+                ctx.fillStyle = 'black';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = 'lime';
+                ctx.beginPath();
+                for (let i = 0; i < bufferLength; i++) {
+                  const x = (dataArrayX[i] + 1) * (canvas.width / 2),
+                    y = canvas.height - (dataArrayY[i] + 1) * (canvas.height / 2);
+                  0 === i ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
+                }
+                ctx.stroke();
+                requestAnimationFrame(draw)
+              }
+              draw()
+            })
+          }, reader.readAsArrayBuffer(file)
+        }
+      })
+    </script>
+  </body>
 </html>
